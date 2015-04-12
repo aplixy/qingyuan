@@ -55,6 +55,8 @@ public class MyListView extends AdapterView<Adapter> {
 
 	private final LinkedList<View> mCachedItemViews = new LinkedList<View>();
 
+	private int mPageBottomEdge;
+
 	final class Motion {
 		float mY;
 		float mX;
@@ -120,10 +122,10 @@ public class MyListView extends AdapterView<Adapter> {
 
 		final float tScrolledDistance = mScrolledDistance;
 		if (tScrolledDistance > 0) {
-			removeDownNonVisibleViews(tScrolledDistance);
+			removeBottomNonVisibleViews(tScrolledDistance);
 			fillListUp(getChildAt(0).getTop(), tScrolledDistance, left);
 		} else {
-			removeUpNonVisibleViews(tScrolledDistance);
+			removeTopNonVisibleViews(tScrolledDistance);
 			fillListDown(getChildAt(getChildCount() - 1).getBottom(), tScrolledDistance, left);
 		}
 		layoutPositionItems(left);
@@ -131,7 +133,7 @@ public class MyListView extends AdapterView<Adapter> {
 		invalidate();
 	}
 
-	private void removeUpNonVisibleViews(float offset) {
+	private void removeTopNonVisibleViews(float offset) {
 		int t_lastPosition = mLastItemPosition;
 		View removeChild = getChildAt(0);
 		while (t_lastPosition < mAdapter.getCount() && removeChild != null && removeChild.getBottom() + offset < 0) {
@@ -143,7 +145,7 @@ public class MyListView extends AdapterView<Adapter> {
 		}
 	}
 
-	private void removeDownNonVisibleViews(float offset) {
+	private void removeBottomNonVisibleViews(float offset) {
 		int t_firstPosition = mFirstItemPosition;
 		View removeChild = getChildAt(getChildCount() - 1);
 		while (t_firstPosition > 0 && removeChild != null && removeChild.getTop() + offset > getHeight()) {
@@ -175,7 +177,7 @@ public class MyListView extends AdapterView<Adapter> {
 	private void fillListDown(int bottomEdge, float offset, int parentLeft) {
 		View cachedView;
 		View newBottomChild = null;
-		while (bottomEdge + offset < getHeight() && mLastItemPosition < mAdapter.getCount()) {
+		while (bottomEdge + offset < mPageBottomEdge && mLastItemPosition < mAdapter.getCount()) {
 			cachedView = getCachedView();
 			newBottomChild = mAdapter.getView(mLastItemPosition, cachedView, this);
 			addAndMeasureChild(newBottomChild, LAYOUT_MODE_BELOW, cachedView == newBottomChild);
@@ -185,7 +187,7 @@ public class MyListView extends AdapterView<Adapter> {
 		if (newBottomChild != null) {
 			int width = newBottomChild.getMeasuredWidth();
 			int height = newBottomChild.getMeasuredHeight();
-			newBottomChild.layout(parentLeft, getHeight(), parentLeft + width, getHeight() + height);
+			newBottomChild.layout(parentLeft, mPageBottomEdge, parentLeft + width, mPageBottomEdge + height);
 		}
 	}
 
@@ -199,14 +201,16 @@ public class MyListView extends AdapterView<Adapter> {
 	private void initList(int parentLeft) {
 		mLastItemPosition = 0;
 		mFirstItemPosition = 0;
-		for (int BottomEdge = 0; BottomEdge < getHeight() && mLastItemPosition < mAdapter.getCount(); mLastItemPosition++) {
+		int bottomEdge = 0;
+		for (; bottomEdge < getHeight() && mLastItemPosition < mAdapter.getCount(); mLastItemPosition++) {
 			View newBottomChild = mAdapter.getView(mLastItemPosition, null, this);
 			addAndMeasureChild(newBottomChild, LAYOUT_MODE_BELOW, false);
 			int width = newBottomChild.getMeasuredWidth();
 			int height = newBottomChild.getMeasuredHeight();
-			newBottomChild.layout(parentLeft, BottomEdge, parentLeft + width, BottomEdge + height);
-			BottomEdge += height;
+			newBottomChild.layout(parentLeft, bottomEdge, parentLeft + width, bottomEdge + height);
+			bottomEdge += height;
 		}
+		mPageBottomEdge = bottomEdge < getHeight() ? bottomEdge : getHeight();
 	}
 
 	private void addAndMeasureChild(View child, int layoutMode, boolean b) {
@@ -226,7 +230,7 @@ public class MyListView extends AdapterView<Adapter> {
 			top = 0;
 		} else if (mLastItemPosition == mAdapter.getCount()) {
 			float bottom = getChildAt(getChildCount() - 1).getBottom() + mScrolledDistance;
-			if (bottom < getHeight()) {
+			if (bottom < mPageBottomEdge) {
 				layoutPositionItemsBottom(parentLeft);
 				return;
 			}
@@ -244,7 +248,7 @@ public class MyListView extends AdapterView<Adapter> {
 
 	private void layoutPositionItemsBottom(int parentLeft) {
 		int tCount = getChildCount() - 1;
-		int bottom = getHeight();
+		int bottom = mPageBottomEdge;
 
 		for (int i = tCount; i >= 0; i--) {
 			View child = getChildAt(i);
