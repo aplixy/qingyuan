@@ -124,11 +124,12 @@ public class MyListView extends AdapterView<Adapter> {
 		if (tScrolledDistance > 0) {
 			removeBottomNonVisibleViews(tScrolledDistance);
 			fillListUp(getChildAt(0).getTop(), tScrolledDistance, left);
+			layoutPositionItemsDown(left);
 		} else {
 			removeTopNonVisibleViews(tScrolledDistance);
 			fillListDown(getChildAt(getChildCount() - 1).getBottom(), tScrolledDistance, left);
+			layoutPositionItemsUp(left);
 		}
-		layoutPositionItems(left);
 
 		invalidate();
 	}
@@ -223,18 +224,51 @@ public class MyListView extends AdapterView<Adapter> {
 			child.measure(MeasureSpec.EXACTLY | getWidth(), MeasureSpec.UNSPECIFIED);
 	}
 
-	private void layoutPositionItems(int parentLeft) {
+	private void layoutPositionItemsUp(int parentLeft) {
 		int top = (int) (getChildAt(0).getTop() + mScrolledDistance);
 
-		if (mFirstItemPosition == 0 && top > 0) {
-			top = 0;
-		} else if (mLastItemPosition == mAdapter.getCount()) {
+		if (mLastItemPosition == mAdapter.getCount()) {
 			float bottom = getChildAt(getChildCount() - 1).getBottom() + mScrolledDistance;
 			if (bottom < mPageBottomEdge) {
 				layoutPositionItemsBottom(parentLeft);
 				return;
 			}
 		}
+
+		for (int i = 0; i < getChildCount(); i++) {
+			View child = getChildAt(i);
+			int width = child.getMeasuredWidth();
+			int height = child.getMeasuredHeight();
+
+			child.layout(parentLeft, top, parentLeft + width, top + height);
+			top += height;
+		}
+	}
+
+	private void layoutPositionItemsDown(int parentLeft) {
+		int tCount = getChildCount() - 1;
+		int bottom = (int) (getChildAt(tCount).getBottom() + mScrolledDistance);
+
+		if (mFirstItemPosition == 0) {
+			float top = getChildAt(0).getTop() + mScrolledDistance;
+			if (top > 0) {
+				layoutPositionItemsTop(parentLeft);
+				return;
+			}
+		}
+
+		for (int i = tCount; i >= 0; i--) {
+			View child = getChildAt(i);
+			int width = child.getMeasuredWidth();
+			int height = child.getMeasuredHeight();
+
+			child.layout(parentLeft, bottom - height, parentLeft + width, bottom);
+			bottom -= height;
+		}
+	}
+
+	private void layoutPositionItemsTop(int parentLeft) {
+		int top = 0;
 
 		for (int i = 0; i < getChildCount(); i++) {
 			View child = getChildAt(i);
