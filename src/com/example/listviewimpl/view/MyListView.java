@@ -555,6 +555,10 @@ public class MyListView extends AdapterView<Adapter> {
 				final int y = scroller.getCurrY();
 
 				int scrolledDistance = mLastFlingY - y;
+
+				// Don't fling more than 1 screen
+				scrolledDistance = scrolledDistance > 0 ? Math.min(getHeight(), scrolledDistance) : Math.max(-(getHeight()), scrolledDistance);
+
 				boolean atEnd = trackMotionScroll(scrolledDistance);
 
 				if (more && !atEnd) {
