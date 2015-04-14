@@ -35,7 +35,6 @@ public class MyListView extends AdapterView<Adapter> {
 
 	private int mLastItemPosition;
 	private int mFirstItemPosition;
-	private float mScrolledDistance;
 
 	private Motion mMotion = new Motion();
 	private Runnable mLongPressRunnable;
@@ -56,6 +55,9 @@ public class MyListView extends AdapterView<Adapter> {
 	private final LinkedList<View> mCachedItemViews = new LinkedList<View>();
 
 	private int mPageBottomEdge;
+
+	private boolean isInLayoutTop;
+	private boolean isInlayoutBottom;
 
 	final class Motion {
 		float mY;
@@ -109,29 +111,30 @@ public class MyListView extends AdapterView<Adapter> {
 	@Override
 	protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
 		super.onLayout(changed, left, top, right, bottom);
-		if (mAdapter == null)
-			return;
-
-		if (getChildCount() == 0) {
+		if (getChildCount() == 0 && mAdapter != null) {
 			initList(left);
-			return;
 		}
+	}
 
-		if (mScrolledDistance == 0)
-			return;
+	private boolean trackMotionScroll(final float scrolledDistance) {
+		if (scrolledDistance == 0)
+			return false;
 
-		final float tScrolledDistance = mScrolledDistance;
-		if (tScrolledDistance > 0) {
-			removeBottomNonVisibleViews(tScrolledDistance);
-			fillListUp(getChildAt(0).getTop(), tScrolledDistance, left);
-			layoutPositionItemsDown(left);
+		if ((scrolledDistance > 0 && isInLayoutTop) || (scrolledDistance < 0 && isInlayoutBottom))
+			return true;
+
+		int left = getLeft();
+		if (scrolledDistance > 0) {
+			removeBottomNonVisibleViews(scrolledDistance);
+			fillListUp(getChildAt(0).getTop(), scrolledDistance, left);
+			layoutPositionItemsDown(left, scrolledDistance);
 		} else {
-			removeTopNonVisibleViews(tScrolledDistance);
-			fillListDown(getChildAt(getChildCount() - 1).getBottom(), tScrolledDistance, left);
-			layoutPositionItemsUp(left);
+			removeTopNonVisibleViews(scrolledDistance);
+			fillListDown(getChildAt(getChildCount() - 1).getBottom(), scrolledDistance, left);
+			layoutPositionItemsUp(left, scrolledDistance);
 		}
-
 		invalidate();
+		return false;
 	}
 
 	private void removeTopNonVisibleViews(float offset) {
@@ -224,16 +227,19 @@ public class MyListView extends AdapterView<Adapter> {
 			child.measure(MeasureSpec.EXACTLY | getWidth(), MeasureSpec.UNSPECIFIED);
 	}
 
-	private void layoutPositionItemsUp(int parentLeft) {
-		int top = (int) (getChildAt(0).getTop() + mScrolledDistance);
+	private void layoutPositionItemsUp(int parentLeft, float scrolledDistance) {
+		int top = (int) (getChildAt(0).getTop() + scrolledDistance);
 
 		if (mLastItemPosition == mAdapter.getCount()) {
-			float bottom = getChildAt(getChildCount() - 1).getBottom() + mScrolledDistance;
+			float bottom = getChildAt(getChildCount() - 1).getBottom() + scrolledDistance;
 			if (bottom < mPageBottomEdge) {
 				layoutPositionItemsBottom(parentLeft);
+				isInlayoutBottom = true;
 				return;
 			}
 		}
+		isInLayoutTop = false;
+		isInlayoutBottom = false;
 
 		for (int i = 0; i < getChildCount(); i++) {
 			View child = getChildAt(i);
@@ -245,17 +251,20 @@ public class MyListView extends AdapterView<Adapter> {
 		}
 	}
 
-	private void layoutPositionItemsDown(int parentLeft) {
+	private void layoutPositionItemsDown(int parentLeft, float scrolledDistance) {
 		int tCount = getChildCount() - 1;
-		int bottom = (int) (getChildAt(tCount).getBottom() + mScrolledDistance);
+		int bottom = (int) (getChildAt(tCount).getBottom() + scrolledDistance);
 
 		if (mFirstItemPosition == 0) {
-			float top = getChildAt(0).getTop() + mScrolledDistance;
+			float top = getChildAt(0).getTop() + scrolledDistance;
 			if (top > 0) {
 				layoutPositionItemsTop(parentLeft);
+				isInLayoutTop = true;
 				return;
 			}
 		}
+		isInLayoutTop = false;
+		isInlayoutBottom = false;
 
 		for (int i = tCount; i >= 0; i--) {
 			View child = getChildAt(i);
@@ -415,8 +424,8 @@ public class MyListView extends AdapterView<Adapter> {
 		}
 		if (startScrollIfNeeded(ev.getX(), ev.getY())) {
 			mTouchMode = TOUCH_MODE_SCROLL;
-			mScrolledDistance = ev.getY() - mMotion.mPointY;
-			requestLayout();
+			float scrolledDistance = ev.getY() - mMotion.mPointY;
+			trackMotionScroll(scrolledDistance);
 		}
 		mMotion.mPointY = ev.getY();
 	}
@@ -543,12 +552,10 @@ public class MyListView extends AdapterView<Adapter> {
 
 				final OverScroller scroller = mScroller;
 				boolean more = scroller.computeScrollOffset();
-				boolean atEnd = false;
 				final int y = scroller.getCurrY();
 
-				mScrolledDistance = mLastFlingY - y;
-
-				requestLayout();
+				int scrolledDistance = mLastFlingY - y;
+				boolean atEnd = trackMotionScroll(scrolledDistance);
 
 				if (more && !atEnd) {
 					mLastFlingY = y;
