@@ -497,7 +497,14 @@ public class MyListView extends AdapterView<Adapter> {
 				mFlingRunnable.startScroll(0, scrollY, 0, -scrollY);
 			}
 			break;
+		case TOUCH_MODE_DOWN:
+			if (mTouchMode == TOUCH_MODE_DOWN) {
+				clickChildAt((int) ev.getX(), (int) ev.getY());
+			}
+			break;
 		}
+		mActivePointerId = INVALID_POINTER;
+		recycleVelocityTracker();
 	}
 
 	private void onTouchMove(MotionEvent ev) {
@@ -713,6 +720,29 @@ public class MyListView extends AdapterView<Adapter> {
 		@Override
 		public void onInvalidated() {
 			// ignore
+		}
+	}
+
+	/**
+	 * 调用ItemClickListener提供当前点击位置
+	 * 
+	 * @param x
+	 *            触摸点X轴值
+	 * @param y
+	 *            触摸点Y轴值
+	 */
+	private void clickChildAt(int x, int y) {
+		// 触摸点在当前显示所有Item中哪一个
+		final int itemIndex = getContainingChildIndex(x, y);
+
+		if (itemIndex != INVALID_POSITION) {
+			final View itemView = getChildAt(itemIndex);
+			// 当前Item在ListView所有Item中的位置
+			final int position = mFirstItemPosition + itemIndex;
+			final long id = mAdapter.getItemId(position);
+
+			// 调用父类方法，会触发ListView ItemClickListener
+			performItemClick(itemView, position, id);
 		}
 	}
 }
