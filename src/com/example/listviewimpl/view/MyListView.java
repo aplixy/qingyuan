@@ -27,6 +27,8 @@ public class MyListView extends AdapterView<Adapter> {
 
 	static final int TOUCH_MODE_OVERSCROLL = 3;
 
+	static final int TOUCH_MODE_DONE_WAITING = 4;
+
 	private static final int INVALID_POINTER = -1;
 
 	private static final float SCROLL_RATIO = 0.35f;// 阻尼系数
@@ -42,7 +44,6 @@ public class MyListView extends AdapterView<Adapter> {
 	private int mFirstItemPosition;
 
 	private Motion mMotion = new Motion();
-	private Runnable mLongPressRunnable;
 	private int mTouchMode;
 	private VelocityTracker mVelocityTracker;
 
@@ -63,6 +64,16 @@ public class MyListView extends AdapterView<Adapter> {
 	public boolean mDataChanged;
 
 	private DataSetObserver mDataSetObserver;
+
+	private int mMotionPosition;
+
+	private CheckForTap mPendingCheckForTap;
+
+	private Runnable mTouchModeReset;
+
+	private View mPressedView;
+
+	private CheckForLongPress mPendingCheckForLongPress;
 
 	final class Motion {
 		float mY;
@@ -388,7 +399,6 @@ public class MyListView extends AdapterView<Adapter> {
 			mMotion.mY = ev.getY();
 			mMotion.mPointY = ev.getY();
 			mActivePointerId = ev.getPointerId(0);
-			startLongPressCheck();
 			initOrResetVelocityTracker();
 			mVelocityTracker.addMovement(ev);
 			scrollTo(0, 0);
@@ -410,7 +420,8 @@ public class MyListView extends AdapterView<Adapter> {
 			break;
 
 		default:
-			removeCallbacks(mLongPressRunnable);
+			removeCallbacks(mPendingCheckForTap);
+			removeCallbacks(mPendingCheckForLongPress);
 		}
 		return false;
 	}
@@ -426,8 +437,11 @@ public class MyListView extends AdapterView<Adapter> {
 		float deltaY = Math.abs(y - mMotion.mY);
 		float deltaX = Math.abs(x - mMotion.mX);
 		if (deltaY > mTouchSlop || deltaX > mTouchSlop) {
-			removeCallbacks(mLongPressRunnable);
+			removeCallbacks(mPendingCheckForTap);
+			removeCallbacks(mPendingCheckForLongPress);
 			if (deltaY > deltaX) {
+				if (mPressedView != null)
+					mPressedView.setPressed(false);
 				mTouchMode = TOUCH_MODE_SCROLL;
 				return true;
 			}
@@ -461,7 +475,11 @@ public class MyListView extends AdapterView<Adapter> {
 	}
 
 	private void onTouchUp(MotionEvent ev) {
-		removeCallbacks(mLongPressRunnable);
+		if (mPressedView != null)
+			mPressedView.setPressed(false);
+
+		removeCallbacks(mTouchMode == TOUCH_MODE_DOWN ? mPendingCheckForTap : mPendingCheckForLongPress);
+
 		switch (mTouchMode) {
 		case TOUCH_MODE_SCROLL:
 			final int childCount = getChildCount();
@@ -498,9 +516,26 @@ public class MyListView extends AdapterView<Adapter> {
 			}
 			break;
 		case TOUCH_MODE_DOWN:
-			if (mTouchMode == TOUCH_MODE_DOWN) {
-				clickChildAt((int) ev.getX(), (int) ev.getY());
+			if (!mDataChanged) {
+				final View child = getChildAt(mMotionPosition);
+				if (child != null && !child.hasFocusable()) {
+					child.setPressed(true);
+					if (mTouchModeReset != null) {
+						removeCallbacks(mTouchModeReset);
+					}
+					mTouchModeReset = new Runnable() {
+						@Override
+						public void run() {
+							mTouchModeReset = null;
+							mTouchMode = TOUCH_MODE_REST;
+							child.setPressed(false);
+						}
+					};
+					postDelayed(mTouchModeReset, ViewConfiguration.getPressedStateDuration());
+				}
 			}
+		case TOUCH_MODE_DONE_WAITING:
+			performItemClick();
 			break;
 		}
 		mActivePointerId = INVALID_POINTER;
@@ -515,6 +550,7 @@ public class MyListView extends AdapterView<Adapter> {
 		}
 		float scrolledDistance = ev.getY() - mMotion.mPointY;
 		switch (mTouchMode) {
+		case TOUCH_MODE_DONE_WAITING:
 		case TOUCH_MODE_DOWN:
 		case TOUCH_MODE_REST:
 			startScrollIfNeeded(ev.getX(), ev.getY());
@@ -557,39 +593,12 @@ public class MyListView extends AdapterView<Adapter> {
 	private void onTouchDown(MotionEvent ev) {
 		mActivePointerId = ev.getPointerId(0);
 		mMotion.mPointY = ev.getY();
-	}
-
-	/**
-	 * 开启异步线程，条件允许时调用LongClickListener
-	 */
-	private void startLongPressCheck() {
-		// 创建子线程
-		if (mLongPressRunnable == null) {
-			mLongPressRunnable = new Runnable() {
-
-				@Override
-				public void run() {
-					if (mTouchMode == TOUCH_MODE_DOWN) {
-						int index = getContainingChildIndex((int) mMotion.mX, (int) mMotion.mY);
-						if (index != INVALID_POSITION) {
-							longClickChild(index);
-						}
-					}
-				}
-			};
+		mMotionPosition = getContainingChildIndex((int) ev.getX(), (int) ev.getY());
+		if (mPendingCheckForTap == null) {
+			mPendingCheckForTap = new CheckForTap();
 		}
-		postDelayed(mLongPressRunnable, ViewConfiguration.getLongPressTimeout());
-	}
-
-	private void longClickChild(int index) {
-		View itemView = getChildAt(index);
-		int position = mFirstItemPosition + index;
-		long id = mAdapter.getItemId(position);
-		OnItemLongClickListener listener = getOnItemLongClickListener();
-
-		if (listener != null) {
-			listener.onItemLongClick(this, itemView, position, id);
-		}
+		mPressedView = null;
+		postDelayed(mPendingCheckForTap, ViewConfiguration.getTapTimeout());
 	}
 
 	private int getContainingChildIndex(int x, int y) {
@@ -731,18 +740,63 @@ public class MyListView extends AdapterView<Adapter> {
 	 * @param y
 	 *            触摸点Y轴值
 	 */
-	private void clickChildAt(int x, int y) {
-		// 触摸点在当前显示所有Item中哪一个
-		final int itemIndex = getContainingChildIndex(x, y);
-
-		if (itemIndex != INVALID_POSITION) {
-			final View itemView = getChildAt(itemIndex);
+	private void performItemClick() {
+		final View itemView = getChildAt(mMotionPosition);
+		if (itemView != null && !mDataChanged) {
 			// 当前Item在ListView所有Item中的位置
-			final int position = mFirstItemPosition + itemIndex;
+			final int position = mFirstItemPosition + mMotionPosition;
 			final long id = mAdapter.getItemId(position);
 
 			// 调用父类方法，会触发ListView ItemClickListener
 			performItemClick(itemView, position, id);
 		}
 	}
+
+	final class CheckForTap implements Runnable {
+		@Override
+		public void run() {
+			if (mTouchMode == TOUCH_MODE_DOWN && !mDataChanged) {
+				final View child = getChildAt(mMotionPosition);
+				if (child != null) {
+					if (!child.hasFocusable()) {
+						child.setPressed(true);
+						mPressedView = child;
+						mTouchMode = TOUCH_MODE_DONE_WAITING;
+					}
+
+					if (isLongClickable()) {
+						if (mPendingCheckForLongPress == null) {
+							mPendingCheckForLongPress = new CheckForLongPress();
+						}
+						postDelayed(mPendingCheckForLongPress, ViewConfiguration.getLongPressTimeout());
+					}
+				}
+			}
+		}
+	}
+
+	private class CheckForLongPress implements Runnable {
+		@Override
+		public void run() {
+			if (mTouchMode == TOUCH_MODE_DOWN || mTouchMode == TOUCH_MODE_DONE_WAITING) {
+				final View child = mPressedView == null ? getChildAt(mMotionPosition) : mPressedView;
+				if (child != null && !mDataChanged) {
+					final int longPressPosition = mMotionPosition + mFirstItemPosition;
+					final long longPressId = mAdapter.getItemId(longPressPosition);
+					boolean handled = false;
+					OnItemLongClickListener listener = getOnItemLongClickListener();
+
+					if (listener != null) {
+						handled = listener.onItemLongClick(MyListView.this, child, longPressPosition, longPressId);
+					}
+
+					if (handled) {
+						mTouchMode = TOUCH_MODE_REST;
+						child.setPressed(false);
+					}
+				}
+			}
+		}
+	}
+
 }
