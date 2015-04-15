@@ -265,11 +265,25 @@ public class MyListView extends AdapterView<Adapter> {
 			bottomEdge += height;
 		}
 
-		if (isInlayoutBottom) {
-			int scrolledDistance = -getScrollY();
-			isInlayoutBottom = false;
-			scrollTo(0, 0);
-			trackMotionScroll(scrolledDistance);
+		for (; bottomEdge < getHeight() && mLastItemPosition < mAdapter.getCount(); mLastItemPosition++) {
+			View oldView = getCachedView();
+			View newBottomChild = mAdapter.getView(mLastItemPosition, oldView, this);
+			addAndMeasureChild(newBottomChild, LAYOUT_MODE_BELOW, oldView == newBottomChild);
+			int width = newBottomChild.getMeasuredWidth();
+			int height = newBottomChild.getMeasuredHeight();
+			newBottomChild.layout(parentLeft, bottomEdge, parentLeft + width, bottomEdge + height);
+			bottomEdge += height;
+		}
+		if (bottomEdge < getHeight()) {
+			mPageBottomEdge = bottomEdge;
+		} else {
+			mPageBottomEdge = getHeight();
+			if (isInlayoutBottom) {
+				int scrolledDistance = -getScrollY();
+				isInlayoutBottom = false;
+				scrollTo(0, 0);
+				trackMotionScroll(scrolledDistance);
+			}
 		}
 	}
 
@@ -290,6 +304,7 @@ public class MyListView extends AdapterView<Adapter> {
 			float bottom = getChildAt(getChildCount() - 1).getBottom() + scrolledDistance;
 			if (bottom < mPageBottomEdge) {
 				layoutPositionItemsBottom(parentLeft);
+				isInLayoutTop = false;
 				isInlayoutBottom = true;
 				return;
 			}
@@ -316,6 +331,7 @@ public class MyListView extends AdapterView<Adapter> {
 			if (top > 0) {
 				layoutPositionItemsTop(parentLeft);
 				isInLayoutTop = true;
+				isInlayoutBottom = false;
 				return;
 			}
 		}
