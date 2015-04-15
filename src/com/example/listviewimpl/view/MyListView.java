@@ -99,6 +99,9 @@ public class MyListView extends AdapterView<Adapter> {
 
 	@Override
 	public void setAdapter(Adapter adapter) {
+		if (mAdapter == adapter)
+			return;
+
 		if (mAdapter != null && mDataSetObserver != null) {
 			mAdapter.unregisterDataSetObserver(mDataSetObserver);
 		}
@@ -108,6 +111,12 @@ public class MyListView extends AdapterView<Adapter> {
 			mDataSetObserver = new AdapterDataSetObserver();
 		}
 		mAdapter.registerDataSetObserver(mDataSetObserver);
+
+		removeAllViewsInLayout();
+		mCachedItemViews.clear();
+		if (mFlingRunnable != null)
+			mFlingRunnable.endFling();
+		requestLayout();
 	}
 
 	@Override
@@ -218,10 +227,12 @@ public class MyListView extends AdapterView<Adapter> {
 	}
 
 	private void initList(int parentLeft) {
-		removeAllViewsInLayout();
 		mDataChanged = false;
 		mLastItemPosition = 0;
 		mFirstItemPosition = 0;
+		isInLayoutTop = false;
+		isInlayoutBottom = false;
+		scrollTo(0, 0);
 		int bottomEdge = 0;
 		for (; bottomEdge < getHeight() && mLastItemPosition < mAdapter.getCount(); mLastItemPosition++) {
 			View newBottomChild = mAdapter.getView(mLastItemPosition, null, this);
@@ -245,12 +256,20 @@ public class MyListView extends AdapterView<Adapter> {
 		removeAllViewsInLayout();
 
 		for (int t_Position = 0; t_Position < t_count; t_Position++) {
-			View newBottomChild = mAdapter.getView(mFirstItemPosition + t_Position, getChildAt(t_Position), this);
-			addAndMeasureChild(newBottomChild, LAYOUT_MODE_BELOW, false);
+			View oldView = tem[t_Position];
+			View newBottomChild = mAdapter.getView(mFirstItemPosition + t_Position, oldView, this);
+			addAndMeasureChild(newBottomChild, LAYOUT_MODE_BELOW, oldView == newBottomChild);
 			int width = newBottomChild.getMeasuredWidth();
 			int height = newBottomChild.getMeasuredHeight();
 			newBottomChild.layout(parentLeft, bottomEdge, parentLeft + width, bottomEdge + height);
 			bottomEdge += height;
+		}
+
+		if (isInlayoutBottom) {
+			int scrolledDistance = -getScrollY();
+			isInlayoutBottom = false;
+			scrollTo(0, 0);
+			trackMotionScroll(scrolledDistance);
 		}
 	}
 
