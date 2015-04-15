@@ -4,6 +4,7 @@ import java.util.LinkedList;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
+import android.database.DataSetObserver;
 import android.graphics.Rect;
 import android.util.AttributeSet;
 import android.view.MotionEvent;
@@ -24,7 +25,11 @@ public class MyListView extends AdapterView<Adapter> {
 
 	static final int TOUCH_MODE_FLING = 2;
 
+	static final int TOUCH_MODE_OVERSCROLL = 3;
+
 	private static final int INVALID_POINTER = -1;
+
+	private static final float SCROLL_RATIO = 0.35f;// 阻尼系数
 
 	private final int LAYOUT_MODE_BELOW = -1;
 	private final int LAYOUT_MODE_ABOVE = 0;
@@ -45,9 +50,6 @@ public class MyListView extends AdapterView<Adapter> {
 
 	private int mMaximumVelocity;
 
-	private int mOverscrollDistance;
-	private int mOverflingDistance;
-
 	private int mActivePointerId;
 
 	private FlingRunnable mFlingRunnable;
@@ -58,6 +60,9 @@ public class MyListView extends AdapterView<Adapter> {
 
 	private boolean isInLayoutTop;
 	private boolean isInlayoutBottom;
+	public boolean mDataChanged;
+
+	private DataSetObserver mDataSetObserver;
 
 	final class Motion {
 		float mY;
@@ -85,8 +90,6 @@ public class MyListView extends AdapterView<Adapter> {
 		mTouchSlop = configuration.getScaledTouchSlop();
 		mMinimumVelocity = configuration.getScaledMinimumFlingVelocity();
 		mMaximumVelocity = configuration.getScaledMaximumFlingVelocity();
-		mOverscrollDistance = configuration.getScaledOverscrollDistance();
-		mOverflingDistance = configuration.getScaledOverflingDistance();
 	}
 
 	@Override
@@ -96,7 +99,15 @@ public class MyListView extends AdapterView<Adapter> {
 
 	@Override
 	public void setAdapter(Adapter adapter) {
+		if (mAdapter != null && mDataSetObserver != null) {
+			mAdapter.unregisterDataSetObserver(mDataSetObserver);
+		}
+
 		mAdapter = adapter;
+		if (mDataSetObserver == null) {
+			mDataSetObserver = new AdapterDataSetObserver();
+		}
+		mAdapter.registerDataSetObserver(mDataSetObserver);
 	}
 
 	@Override
@@ -113,6 +124,10 @@ public class MyListView extends AdapterView<Adapter> {
 		super.onLayout(changed, left, top, right, bottom);
 		if (getChildCount() == 0 && mAdapter != null) {
 			initList(left);
+		}
+
+		if (mDataChanged) {
+			refreshList(left);
 		}
 	}
 
@@ -203,6 +218,8 @@ public class MyListView extends AdapterView<Adapter> {
 	}
 
 	private void initList(int parentLeft) {
+		removeAllViewsInLayout();
+		mDataChanged = false;
 		mLastItemPosition = 0;
 		mFirstItemPosition = 0;
 		int bottomEdge = 0;
@@ -215,6 +232,26 @@ public class MyListView extends AdapterView<Adapter> {
 			bottomEdge += height;
 		}
 		mPageBottomEdge = bottomEdge < getHeight() ? bottomEdge : getHeight();
+	}
+
+	private void refreshList(int parentLeft) {
+		mDataChanged = false;
+		int t_count = getChildCount();
+		final View[] tem = new View[t_count];
+		for (int i = 0; i < t_count; i++) {
+			tem[i] = getChildAt(i);
+		}
+		int bottomEdge = tem[0].getTop();
+		removeAllViewsInLayout();
+
+		for (int t_Position = 0; t_Position < t_count; t_Position++) {
+			View newBottomChild = mAdapter.getView(mFirstItemPosition + t_Position, getChildAt(t_Position), this);
+			addAndMeasureChild(newBottomChild, LAYOUT_MODE_BELOW, false);
+			int width = newBottomChild.getMeasuredWidth();
+			int height = newBottomChild.getMeasuredHeight();
+			newBottomChild.layout(parentLeft, bottomEdge, parentLeft + width, bottomEdge + height);
+			bottomEdge += height;
+		}
 	}
 
 	private void addAndMeasureChild(View child, int layoutMode, boolean b) {
@@ -319,6 +356,7 @@ public class MyListView extends AdapterView<Adapter> {
 			startLongPressCheck();
 			initOrResetVelocityTracker();
 			mVelocityTracker.addMovement(ev);
+			scrollTo(0, 0);
 			break;
 
 		case MotionEvent.ACTION_MOVE:
@@ -354,8 +392,10 @@ public class MyListView extends AdapterView<Adapter> {
 		float deltaX = Math.abs(x - mMotion.mX);
 		if (deltaY > mTouchSlop || deltaX > mTouchSlop) {
 			removeCallbacks(mLongPressRunnable);
-			if (deltaY > deltaX)
+			if (deltaY > deltaX) {
+				mTouchMode = TOUCH_MODE_SCROLL;
 				return true;
+			}
 		}
 		return false;
 	}
@@ -413,6 +453,15 @@ public class MyListView extends AdapterView<Adapter> {
 			}
 			mActivePointerId = INVALID_POINTER;
 			break;
+		case TOUCH_MODE_OVERSCROLL:
+			int scrollY = getScrollY();
+			if (scrollY != 0) {
+				if (mFlingRunnable == null) {
+					mFlingRunnable = new FlingRunnable();
+				}
+				mFlingRunnable.startScroll(0, scrollY, 0, -scrollY);
+			}
+			break;
 		}
 	}
 
@@ -422,10 +471,43 @@ public class MyListView extends AdapterView<Adapter> {
 			pointerIndex = 0;
 			mActivePointerId = ev.getPointerId(pointerIndex);
 		}
-		if (startScrollIfNeeded(ev.getX(), ev.getY())) {
-			mTouchMode = TOUCH_MODE_SCROLL;
-			float scrolledDistance = ev.getY() - mMotion.mPointY;
-			trackMotionScroll(scrolledDistance);
+		float scrolledDistance = ev.getY() - mMotion.mPointY;
+		switch (mTouchMode) {
+		case TOUCH_MODE_DOWN:
+		case TOUCH_MODE_REST:
+			startScrollIfNeeded(ev.getX(), ev.getY());
+			break;
+		case TOUCH_MODE_SCROLL:
+			if (trackMotionScroll(scrolledDistance))
+				mTouchMode = TOUCH_MODE_OVERSCROLL;
+			break;
+		case TOUCH_MODE_OVERSCROLL:
+			if (scrolledDistance == 0)
+				break;
+
+			scrolledDistance = -scrolledDistance;
+
+			float newScrollY = getScrollY() + scrolledDistance;
+			if (isInLayoutTop) {
+				if (newScrollY > 0) {
+					scrollTo(0, 0);
+					mTouchMode = TOUCH_MODE_SCROLL;
+					break;
+				}
+				final int sY = (int) (scrolledDistance * (scrolledDistance > 0 ? 1 : SCROLL_RATIO));
+				scrollBy(0, sY);
+			} else if (isInlayoutBottom) {
+				if (newScrollY < 0) {
+					scrollTo(0, 0);
+					mTouchMode = TOUCH_MODE_SCROLL;
+					break;
+				}
+				final int sY = (int) (scrolledDistance * (scrolledDistance < 0 ? 1 : SCROLL_RATIO));
+				scrollBy(0, sY);
+			} else {
+				mTouchMode = TOUCH_MODE_SCROLL;
+			}
+			break;
 		}
 		mMotion.mPointY = ev.getY();
 	}
@@ -521,6 +603,11 @@ public class MyListView extends AdapterView<Adapter> {
 			postOnAnimation(this);
 		}
 
+		void startScroll(int startX, int startY, int dx, int dy) {
+			mScroller.startScroll(startX, startY, dx, dy, 500);
+			postOnAnimation(this);
+		}
+
 		void endFling() {
 			mTouchMode = TOUCH_MODE_REST;
 
@@ -568,7 +655,29 @@ public class MyListView extends AdapterView<Adapter> {
 					endFling();
 				}
 				break;
+			case TOUCH_MODE_OVERSCROLL:
+				if (mScroller.computeScrollOffset()) {
+					scrollTo(0, mScroller.getCurrY());
+					postOnAnimation(this);
+				} else {
+					endFling();
+				}
+				break;
 			}
+		}
+	}
+
+	class AdapterDataSetObserver extends DataSetObserver {
+
+		@Override
+		public void onChanged() {
+			mDataChanged = true;
+			requestLayout();
+		}
+
+		@Override
+		public void onInvalidated() {
+			// ignore
 		}
 	}
 }
