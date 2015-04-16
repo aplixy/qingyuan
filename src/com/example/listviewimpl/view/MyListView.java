@@ -84,6 +84,8 @@ public class MyListView extends AdapterView<Adapter> {
 
 	private OnScrollListener mOnScrollListener;
 
+	private int mItemCount;
+
 	final class Motion {
 		float mY;
 		float mX;
@@ -151,13 +153,19 @@ public class MyListView extends AdapterView<Adapter> {
 	@Override
 	protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
 		super.onLayout(changed, left, top, right, bottom);
-		if (getChildCount() == 0 && mAdapter != null) {
+
+		if (mAdapter == null)
+			return;
+
+		mItemCount = mAdapter.getCount();
+		if (getChildCount() == 0) {
 			initList(left);
 		}
 
 		if (mDataChanged) {
 			refreshList(left);
 		}
+		invokeOnItemScrollListener();
 	}
 
 	private boolean trackMotionScroll(final float scrolledDistance) {
@@ -178,13 +186,14 @@ public class MyListView extends AdapterView<Adapter> {
 			layoutPositionItemsUp(left, scrolledDistance);
 		}
 		invalidate();
+		invokeOnItemScrollListener();
 		return false;
 	}
 
 	private void removeTopNonVisibleViews(float offset) {
 		int t_lastPosition = mLastItemPosition;
 		View removeChild = getChildAt(0);
-		while (t_lastPosition < mAdapter.getCount() && removeChild != null && removeChild.getBottom() + offset < 0) {
+		while (t_lastPosition < mItemCount && removeChild != null && removeChild.getBottom() + offset < 0) {
 			removeViewInLayout(removeChild);
 			mCachedItemViews.addLast(removeChild);
 			mFirstItemPosition++;
@@ -225,7 +234,7 @@ public class MyListView extends AdapterView<Adapter> {
 	private void fillListDown(int bottomEdge, float offset, int parentLeft) {
 		View cachedView;
 		View newBottomChild = null;
-		while (bottomEdge + offset < mPageBottomEdge && mLastItemPosition < mAdapter.getCount()) {
+		while (bottomEdge + offset < mPageBottomEdge && mLastItemPosition < mItemCount) {
 			cachedView = getCachedView();
 			newBottomChild = mAdapter.getView(mLastItemPosition, cachedView, this);
 			addAndMeasureChild(newBottomChild, LAYOUT_MODE_BELOW, cachedView == newBottomChild);
@@ -254,7 +263,7 @@ public class MyListView extends AdapterView<Adapter> {
 		isInlayoutBottom = false;
 		scrollTo(0, 0);
 		int bottomEdge = 0;
-		for (; bottomEdge < getHeight() && mLastItemPosition < mAdapter.getCount(); mLastItemPosition++) {
+		for (; bottomEdge < getHeight() && mLastItemPosition < mItemCount; mLastItemPosition++) {
 			View newBottomChild = mAdapter.getView(mLastItemPosition, null, this);
 			addAndMeasureChild(newBottomChild, LAYOUT_MODE_BELOW, false);
 			int width = newBottomChild.getMeasuredWidth();
@@ -285,7 +294,7 @@ public class MyListView extends AdapterView<Adapter> {
 			bottomEdge += height;
 		}
 
-		for (; bottomEdge < getHeight() && mLastItemPosition < mAdapter.getCount(); mLastItemPosition++) {
+		for (; bottomEdge < getHeight() && mLastItemPosition < mItemCount; mLastItemPosition++) {
 			View oldView = getCachedView();
 			View newBottomChild = mAdapter.getView(mLastItemPosition, oldView, this);
 			addAndMeasureChild(newBottomChild, LAYOUT_MODE_BELOW, oldView == newBottomChild);
@@ -320,7 +329,7 @@ public class MyListView extends AdapterView<Adapter> {
 	private void layoutPositionItemsUp(int parentLeft, float scrolledDistance) {
 		int top = (int) (getChildAt(0).getTop() + scrolledDistance);
 
-		if (mLastItemPosition == mAdapter.getCount()) {
+		if (mLastItemPosition == mItemCount) {
 			float bottom = getChildAt(getChildCount() - 1).getBottom() + scrolledDistance;
 			if (bottom < mPageBottomEdge) {
 				layoutPositionItemsBottom(parentLeft);
@@ -610,7 +619,7 @@ public class MyListView extends AdapterView<Adapter> {
 	private void onTouchDown(MotionEvent ev) {
 		mActivePointerId = ev.getPointerId(0);
 		mMotion.mPointY = ev.getY();
-		mMotionPosition = getContainingChildIndex((int) ev.getX(), (int) ev.getY());
+		mMotionPosition = pointToPosition((int) ev.getX(), (int) ev.getY());
 		if (mPendingCheckForTap == null) {
 			mPendingCheckForTap = new CheckForTap();
 		}
@@ -618,7 +627,7 @@ public class MyListView extends AdapterView<Adapter> {
 		postDelayed(mPendingCheckForTap, ViewConfiguration.getTapTimeout());
 	}
 
-	private int getContainingChildIndex(int x, int y) {
+	public int pointToPosition(int x, int y) {
 		Rect mRect = new Rect();
 		// 遍历当前ListView所有Item
 		for (int i = 0; i < getChildCount(); i++) {
@@ -825,6 +834,12 @@ public class MyListView extends AdapterView<Adapter> {
 		if (mOnScrollListener != null && newState != mLastScrollState) {
 			mLastScrollState = newState;
 			mOnScrollListener.onScrollStateChanged(this, newState);
+		}
+	}
+
+	void invokeOnItemScrollListener() {
+		if (mOnScrollListener != null) {
+			mOnScrollListener.onScroll(this, mFirstItemPosition, getChildCount(), mItemCount);
 		}
 	}
 
