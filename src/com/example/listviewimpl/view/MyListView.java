@@ -403,13 +403,19 @@ public class MyListView extends AdapterView<Adapter> {
 		}
 		switch (ev.getAction()) {
 		case MotionEvent.ACTION_DOWN:
-			mTouchMode = TOUCH_MODE_DOWN;
 			mMotion.mX = ev.getX();
 			mMotion.mY = ev.getY();
 			mMotion.mPointY = ev.getY();
 			mActivePointerId = ev.getPointerId(0);
 			initOrResetVelocityTracker();
 			mVelocityTracker.addMovement(ev);
+
+			if (mTouchMode == TOUCH_MODE_FLING) {
+				mTouchMode = TOUCH_MODE_SCROLL;
+				return true;
+			}
+
+			mTouchMode = TOUCH_MODE_DOWN;
 			scrollTo(0, 0);
 			break;
 
@@ -692,10 +698,12 @@ public class MyListView extends AdapterView<Adapter> {
 				return;
 
 			case TOUCH_MODE_SCROLL:
-				if (mScroller.isFinished()) {
-					return;
-				}
 				// Fall through
+				if (!mScroller.isFinished()) {
+					mScroller.computeScrollOffset();
+					postOnAnimation(this);
+				}
+				return;
 			case TOUCH_MODE_FLING:
 				if (getChildCount() == 0) {
 					endFling();
