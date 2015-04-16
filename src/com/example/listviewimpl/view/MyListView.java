@@ -494,9 +494,22 @@ public class MyListView extends AdapterView<Adapter> {
 		case MotionEvent.ACTION_UP:
 			onTouchUp(ev);
 			break;
+		case MotionEvent.ACTION_CANCEL:
+			onTouchCancel();
+			break;
 		}
 
 		return true;
+	}
+
+	private void onTouchCancel() {
+		mTouchMode = TOUCH_MODE_REST;
+		removeCallbacks(mPendingCheckForLongPress);
+		recycleVelocityTracker();
+		if (mPressedView != null)
+			mPressedView.setPressed(false);
+
+		mActivePointerId = INVALID_POINTER;
 	}
 
 	private void onTouchUp(MotionEvent ev) {
@@ -530,7 +543,6 @@ public class MyListView extends AdapterView<Adapter> {
 			} else {
 				mTouchMode = TOUCH_MODE_REST;
 			}
-			mActivePointerId = INVALID_POINTER;
 			break;
 		case TOUCH_MODE_OVERSCROLL:
 			int scrollY = getScrollY();
@@ -539,6 +551,8 @@ public class MyListView extends AdapterView<Adapter> {
 					mFlingRunnable = new FlingRunnable();
 				}
 				mFlingRunnable.startScroll(0, scrollY, 0, -scrollY);
+			} else {
+				mTouchMode = TOUCH_MODE_REST;
 			}
 			break;
 		case TOUCH_MODE_DOWN:
