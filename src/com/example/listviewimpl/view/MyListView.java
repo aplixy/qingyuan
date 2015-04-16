@@ -15,6 +15,11 @@ import android.widget.Adapter;
 import android.widget.AdapterView;
 import android.widget.OverScroller;
 
+/**
+ * 
+ * @author qingyuanwu
+ * 
+ */
 public class MyListView extends AdapterView<Adapter> {
 
 	static final int TOUCH_MODE_REST = -1;
@@ -74,6 +79,10 @@ public class MyListView extends AdapterView<Adapter> {
 	private View mPressedView;
 
 	private CheckForLongPress mPendingCheckForLongPress;
+
+	private int mLastScrollState;
+
+	private OnScrollListener mOnScrollListener;
 
 	final class Motion {
 		float mY;
@@ -442,6 +451,7 @@ public class MyListView extends AdapterView<Adapter> {
 			if (deltaY > deltaX) {
 				if (mPressedView != null)
 					mPressedView.setPressed(false);
+				reportScrollStateChange(OnScrollListener.SCROLL_STATE_TOUCH_SCROLL);
 				mTouchMode = TOUCH_MODE_SCROLL;
 				return true;
 			}
@@ -493,6 +503,7 @@ public class MyListView extends AdapterView<Adapter> {
 					if (mFlingRunnable == null) {
 						mFlingRunnable = new FlingRunnable();
 					}
+					reportScrollStateChange(OnScrollListener.SCROLL_STATE_FLING);
 					mFlingRunnable.start(-initialVelocity);
 				} else {
 					mTouchMode = TOUCH_MODE_REST;
@@ -664,6 +675,9 @@ public class MyListView extends AdapterView<Adapter> {
 
 			removeCallbacks(this);
 			removeCallbacks(mCheckFlywheel);
+
+			reportScrollStateChange(OnScrollListener.SCROLL_STATE_IDLE);
+			mScroller.abortAnimation();
 		}
 
 		void flywheelTouch() {
@@ -797,6 +811,30 @@ public class MyListView extends AdapterView<Adapter> {
 				}
 			}
 		}
+	}
+
+	void reportScrollStateChange(int newState) {
+		if (mOnScrollListener != null && newState != mLastScrollState) {
+			mLastScrollState = newState;
+			mOnScrollListener.onScrollStateChanged(this, newState);
+		}
+	}
+
+	public void setOnScrollListener(OnScrollListener l) {
+		mOnScrollListener = l;
+	}
+
+	public interface OnScrollListener {
+
+		public static int SCROLL_STATE_IDLE = 0;
+
+		public static int SCROLL_STATE_TOUCH_SCROLL = 1;
+
+		public static int SCROLL_STATE_FLING = 2;
+
+		public void onScrollStateChanged(MyListView view, int scrollState);
+
+		public void onScroll(MyListView view, int firstVisibleItem, int visibleItemCount, int totalItemCount);
 	}
 
 }
