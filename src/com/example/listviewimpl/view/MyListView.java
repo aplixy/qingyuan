@@ -158,6 +158,9 @@ public class MyListView extends AdapterView<Adapter> {
 			return;
 
 		mItemCount = mAdapter.getCount();
+		if (mItemCount == 0)
+			return;
+
 		if (getChildCount() == 0) {
 			initList(left);
 		}
