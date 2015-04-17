@@ -188,7 +188,6 @@ public class MyListView extends AdapterView<Adapter> {
 			fillListDown(getChildAt(getChildCount() - 1).getBottom(), scrolledDistance, left);
 			layoutPositionItemsUp(left, scrolledDistance);
 		}
-		invalidate();
 		invokeOnItemScrollListener();
 		return false;
 	}
@@ -325,6 +324,7 @@ public class MyListView extends AdapterView<Adapter> {
 			params = new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
 		}
 		addViewInLayout(child, layoutMode, params, true);
+		child.invalidate();
 		if (!b)
 			child.measure(MeasureSpec.EXACTLY | getWidth(), MeasureSpec.UNSPECIFIED);
 	}
